@@ -5,7 +5,7 @@ MODEL_NAME=bert-base-uncased
 TASK_NAME=mnli #{cola,mnli,mrpc,qnli,qqp,rte,sst2,stsb,wnli}
 NO_EPOCHS=8
 PRUNE_RATIO=.1 #No of reduced params / No of original params
-DECOM_TYPE="qr" #{svd,fwsvd,qr}
+DECOM_TYPE="fwsvd" #{svd,fwsvd,qr}
 
 
 python3 run_glue.py \
