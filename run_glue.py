@@ -205,6 +205,8 @@ def parse_args():
     parser.add_argument("--deltaT",               type=int,    default=10)
     parser.add_argument("--eval_checkpoint",      type=str,    default="No checkpoint", help="use this during the evaluation")
 
+    parser.add_argument("--apply_LoSparse",       type=bool,   default=True)
+    
     #############################
     #         FWSVD???          #
     #############################
@@ -218,7 +220,8 @@ def parse_args():
     )
     parser.add_argument(
         "--fwsvdfile",
-        action="store_true",
+        type=bool,
+        default=False,
         help="Whether pretrained I-dic is available",
     )
 
@@ -271,6 +274,10 @@ def main():
     if args.seed is not None:
         set_seed(args.seed)
 
+    #with open("repository.py", "r") as repo:
+        #code = repo.read()
+    #exec(code)
+    
     # Handle the repository creation
     if accelerator.is_main_process:
         if args.push_to_hub:
@@ -420,8 +427,9 @@ accelerate launch --num_cpu_threads_per_process 24 run_fwsvd.py \\
         do_fwsvd = False
         do_qr = False
         model2 = model
-
-    utils.substitute_layer_weights(module=model, module2=model2,
+    
+    if args.apply_LoSparse:
+        utils.substitute_layer_weights(module=model, module2=model2,
                                    allow_name=allow_name,
                                    block_name=block_name,
                                    parameter_ratio=args.low_rank_parameter_ratio,
@@ -633,7 +641,8 @@ accelerate launch --num_cpu_threads_per_process 24 run_fwsvd.py \\
     #      STEP 2: Setup Pruner      #
     #                                #
     ##################################
-    pruner = utils.Pruner(model=model,
+    if args.apply_LoSparse:
+        pruner = utils.Pruner(model=model,
                           args=args,
                           total_step=args.max_train_steps,
                           mask_param_name=['sparse'],
@@ -663,8 +672,8 @@ accelerate launch --num_cpu_threads_per_process 24 run_fwsvd.py \\
                 # STEP 3: Prune During Training  #
                 #                                #
                 ##################################
-
-                threshold, mask_threshold = pruner.update_and_pruning(model, completed_steps)
+                if args.apply_LoSparse:
+                    threshold, mask_threshold = pruner.update_and_pruning(model, completed_steps)
 
                 lr_scheduler.step()
                 optimizer.zero_grad()
