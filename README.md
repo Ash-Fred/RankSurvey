@@ -15,11 +15,11 @@ train_glue.sh
 ## ARGUMENTS
 
 - `-m` : model name (default: `bert-base-uncased`)
-- `-t` : task name #{`cola`,`mnli`,`mrpc`,`qnli`,`qqp`,`rte`,`sst2`,`stsb`,`wnli`} (default: `mnli`)
+- `-t` : task name (choices: {`cola`,`mnli`,`mrpc`,`qnli`,`qqp`,`rte`,`sst2`,`stsb`,`wnli`}, default: `mnli`)
 - `-n` : no. of epochs (default: `8`)
-- `-r` : prune ratio #No of reduced params / No of original params (default: `.1`)
-- `-d` : decomposition type #{fwsvd,svd,qr} (default: `fwsvd`)
-- `-l` : apply LoSparse #boolean (default: `True`)
+- `-r` : prune ratio (No of reduced params / No of original params, default: `.1`)
+- `-d` : decomposition type (choices: {fwsvd,svd,qr}, default: `fwsvd`)
+- `-l` : apply LoSparse (boolean, default: `True`)
 
 **Example:** 
 

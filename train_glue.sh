@@ -59,4 +59,4 @@ python run_glue.py \
 --gradient_accumulation_steps 8 \
 --decom_type ${DECOM_TYPE:-fwsvd} \
 --apply_LoSparse 1 \
---fwsvdfile
+#--fwsvdfile
