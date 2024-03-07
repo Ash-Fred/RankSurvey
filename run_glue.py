@@ -27,7 +27,7 @@ import torch
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import set_seed
-from datasets import load_dataset
+#from datasets import load_dataset
 from huggingface_hub import Repository, create_repo
 from torch.utils.data import DataLoader
 from tqdm.auto import tqdm
@@ -46,6 +46,7 @@ from transformers import (
 from transformers.utils import check_min_version, get_full_repo_name, send_example_telemetry
 from transformers.utils.versions import require_version
 import utils
+from raw_datasets import raw_dataset
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -220,8 +221,7 @@ def parse_args():
     )
     parser.add_argument(
         "--fwsvdfile",
-        type=bool,
-        default=False,
+        action='store_true',
         help="Whether pretrained I-dic is available",
     )
 
@@ -287,7 +287,7 @@ def main():
                 repo_name = args.hub_model_id
             create_repo(repo_name, exist_ok=True, token=args.hub_token)
             repo = Repository(args.output_dir, clone_from=repo_name, token=args.hub_token)
-
+    
             with open(os.path.join(args.output_dir, ".gitignore"), "w+") as gitignore:
                 if "step_*" not in gitignore:
                     gitignore.write("step_*\n")
@@ -296,33 +296,7 @@ def main():
         elif args.output_dir is not None:
             os.makedirs(args.output_dir, exist_ok=True)
     accelerator.wait_for_everyone()
-
-    # Get the datasets: you can either provide your own CSV/JSON training and evaluation files (see below)
-    # or specify a GLUE benchmark task (the dataset will be downloaded automatically from the datasets Hub).
-
-    # For CSV/JSON files, this script will use as labels the column called 'label' and as pair of sentences the
-    # sentences in columns called 'sentence1' and 'sentence2' if such column exists or the first two columns not named
-    # label if at least two columns are provided.
-
-    # If the CSVs/JSONs contain only one non-label column, the script does single sentence classification on this
-    # single column. You can easily tweak this behavior (see below)
-
-    # In distributed training, the load_dataset function guarantee that only one local process can concurrently
-    # download the dataset.
-    if args.task_name is not None:
-        # Downloading and loading a dataset from the hub.
-        raw_datasets = load_dataset("glue", args.task_name)
-    else:
-        # Loading the dataset from local csv or json file.
-        data_files = {}
-        if args.train_file is not None:
-            data_files["train"] = args.train_file
-        if args.validation_file is not None:
-            data_files["validation"] = args.validation_file
-        extension = (args.train_file if args.train_file is not None else args.validation_file).split(".")[-1]
-        raw_datasets = load_dataset(extension, data_files=data_files)
-    # See more about loading any type of standard or custom dataset at
-    # https://huggingface.co/docs/datasets/loading_datasets.html.
+    raw_datasets = raw_dataset(args)
 
     # Labels
     if args.task_name is not None:
@@ -376,28 +350,9 @@ def main():
         do_fwsvd = True
         do_qr = False
         if not args.fwsvdfile:
+            from train_glue_fwsvd import tgfwsvd
             with open("train_glue_fwsvd.sh", "w") as file:
-                file.write(f"""export CUDA_LAUNCH_BLOCKING=1
-export NCCL_DEBUG=INFO
-export NCCL_P2P_DISABLE=1
-export NCCL_IB_DISABLE=1
-export TOKENIZERS_PARALLELISM=false
-#export CUDA_VISIBLE_DEVICES=1
-                    
-TASK_NAME={args.task_name}
-SAVE_PREFIX=$TASK_NAME/
-                    
-accelerate launch --num_cpu_threads_per_process 24 run_fwsvd.py \\
-  --model_name_or_path {args.model_name_or_path} \\
-  --task_name $TASK_NAME \\
-  --per_device_eval_batch_size 128 \\
-  --pad_to_max_length \\
-  --max_length 128 \\
-  --per_device_train_batch_size 32 \\
-  --learning_rate 2e-5 \\
-  --output_dir $SAVE_PREFIX/ \\
-  --num_train_epochs 3"""
-                )
+                file.write(tgfwsvd(args))
 
             import subprocess
 

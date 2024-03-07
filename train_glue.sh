@@ -41,7 +41,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 
-python3 run_glue.py \
+python run_glue.py \
 --task_name ${TASK_NAME:-mnli} \
 --model_name_or_path ${MODEL_NAME:-bert-base-uncased} \
 --warmup_steps 0 \
@@ -58,5 +58,5 @@ python3 run_glue.py \
 --low_rank_parameter_ratio ${PRUNE_RATIO:-'.1'} \
 --gradient_accumulation_steps 8 \
 --decom_type ${DECOM_TYPE:-fwsvd} \
---apply_LoSparse ${LOSPARSE_ON:-'1'} \
---fwsvdfile 0
+--apply_LoSparse 1 \
+--fwsvdfile
