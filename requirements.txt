@@ -1,5 +1,5 @@
-scikit-learn
-scipy
+scikit-learn~=1.4.1.post1
+scipy~=1.12.0
 torch~=2.2.0
 datasets~=2.18.0
 evaluate~=0.4.1
@@ -9,9 +9,9 @@ accelerate~=0.27.2
 tqdm~=4.66.2
 nltk~=3.8.1
 filelock~=3.13.1
-rouge-score
-tensorboard
-tensorboardX
+rouge-score~=0.1.2
+tensorboard~=2.16.2
+tensorboardX~=2.6.2.2
 
 multiprocess==0.70.16
 dill==0.3.8
