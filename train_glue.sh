@@ -6,7 +6,7 @@ while [[ $# -gt 0 ]]; do
   case $key in
   --task_name|-t)
     TASK_NAME="$2"
-    shift # Shift past argument
+    shift
     ;;
   --model_name_or_path|-m)
     MODEL_NAME="$2"
@@ -22,14 +22,6 @@ while [[ $# -gt 0 ]]; do
     ;;
   --decom_type|-d)
     DECOM_TYPE="$2"
-    shift
-    ;;
-  --decom_type|-l)
-    LOSPARSE_ON="$2"
-    shift
-    ;;
-  --decom_type|-f)
-    FWSVDFILE="$2"
     shift
     ;;
   *) # Unknown option
@@ -58,5 +50,6 @@ python run_glue.py \
 --low_rank_parameter_ratio ${PRUNE_RATIO:-'.1'} \
 --gradient_accumulation_steps 8 \
 --decom_type ${DECOM_TYPE:-fwsvd} \
---apply_LoSparse 1 \
-#--fwsvdfile
+-l \
+-e \
+#-f

@@ -19,10 +19,11 @@ train_glue.sh
 - `-n` : no. of epochs (default: `8`)
 - `-r` : prune ratio (No of reduced params / No of original params, default: `.1`)
 - `-d` : decomposition type (choices: {fwsvd,svd,qr}, default: `fwsvd`)
-- `-l` : apply LoSparse (boolean, default: `True`)
+- `-l` : apply LoSparse
+- `-e` : apply DRONE
 
 **Example:** 
 
 ```
-train_glue.sh -m bert-base-uncased -t mnli -n 8 -r .1 -d fwsvd -l 1
+train_glue.sh -m bert-base-uncased -t mnli -n 8 -r .1 -d fwsvd -l -e
 ```

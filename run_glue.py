@@ -206,7 +206,7 @@ def parse_args():
     parser.add_argument("--deltaT",               type=int,    default=10)
     parser.add_argument("--eval_checkpoint",      type=str,    default="No checkpoint", help="use this during the evaluation")
 
-    parser.add_argument("--apply_LoSparse",       type=bool,   default=True)
+    parser.add_argument("-l", "--apply_LoSparse", action="store_true", dest="apply_LoSparse", help="Whether to apply DRONE")
     
     #############################
     #         FWSVD???          #
@@ -220,9 +220,16 @@ def parse_args():
         choices=["svd", "fwsvd", "qr"],
     )
     parser.add_argument(
-        "--fwsvdfile",
+        "-f", "--fwsvdfile",
+        action="store_true",
+        dest="fwsvdfile",
+        help="Whether pretrained I-dic is available"
+    )
+    parser.add_argument(
+        "-e", "--apply_drone",
         action='store_true',
-        help="Whether pretrained I-dic is available",
+        dest='apply_drone',
+        help="Whether to apply DRONE"
     )
 
     args = parser.parse_args()
@@ -246,6 +253,7 @@ def parse_args():
 
 def main():
     args = parse_args()
+    
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_glue_no_trainer", args)
@@ -336,6 +344,52 @@ def main():
     #    STEP 1: Replace Matrices    #
     #                                #
     ##################################
+    
+    loaded_dict=None
+    dict_track_queryU = None
+    dict_track_queryS = None
+    dict_track_queryV = None
+    dict_track_keyU = None
+    dict_track_keyS = None
+    dict_track_keyV = None
+
+    # Prepare for DRONE
+    if args.apply_drone:
+        model.eval()
+        
+        training_data = raw_datasets['train']
+        example_inputs = tokenizer(training_data['premise'], training_data['hypothesis'], return_tensors='pt', padding=True, truncation=True)
+        
+        model.config.output_hidden_states = True
+        with torch.no_grad():
+            outputs = model(**example_inputs)
+        
+        dict_track_queryU = {}
+        dict_track_queryS = {}
+        dict_track_queryV = {}
+        dict_track_keyU = {}
+        dict_track_keyS = {}
+        dict_track_keyV = {}
+        
+        for layer_idx in range(model.config.num_hidden_layers):
+            layer = model.bert.encoder.layer[layer_idx]
+            attention = layer.attention.self
+            input_embeddings = outputs.hidden_states[layer_idx]
+        
+            query = torch.matmul(input_embeddings, attention.query.weight.transpose(0, 1)).view(-1, 768)
+            key = torch.matmul(input_embeddings, attention.key.weight.transpose(0, 1)).view(-1, 768)
+            
+            QU, QS, QV = utils.drone_svd(query, parameter_ratio=args.low_rank_parameter_ratio)
+            KU, KS, KV = utils.drone_svd(key, parameter_ratio=args.low_rank_parameter_ratio)
+        
+            dict_track_queryU[f"bert.encoder.layer.{layer_idx}.attention.self.query"] = QU
+            dict_track_queryS[f"bert.encoder.layer.{layer_idx}.attention.self.query"] = QS
+            dict_track_queryV[f"bert.encoder.layer.{layer_idx}.attention.self.query"] = QV
+            dict_track_keyU[f"bert.encoder.layer.{layer_idx}.attention.self.key"] = KU
+            dict_track_keyS[f"bert.encoder.layer.{layer_idx}.attention.self.key"] = KS
+            dict_track_keyV[f"bert.encoder.layer.{layer_idx}.attention.self.key"] = KV
+
+        model.train()
 
     # Substitute weights with low rank matrix and sparse matrix
     allow_name = ['query', 'key', 'value', 'q_proj', 'k_proj', 'v_proj', 'query_proj', 'key_proj', 'value_proj', 'out_proj', 'dense', 'attention', 'fc1', 'fc2']
@@ -344,7 +398,6 @@ def main():
         do_svd = True
         do_fwsvd = False
         do_qr = False
-        model2 = model
     elif args.decom_type == "fwsvd":
         do_svd = True
         do_fwsvd = True
@@ -358,41 +411,50 @@ def main():
 
             shell_script_path = "train_glue_fwsvd.sh"
             subprocess.run(["bash", shell_script_path])
-        #for name, weight in model.named_parameters():
-            #print(name, weight.shape)
-        loaded_dict = torch.load("fischer_mnli.bin", map_location = device)
+        loaded_dict0 = torch.load("fischer_mnli.bin", map_location = device)
+        loaded_dict = {}
+        for k in loaded_dict0.keys():
+            if any(_ in k for _ in allow_name) and not any(_ in k for _ in block_name) and "bias" not in k:
+                loaded_dict[k] = loaded_dict0[k]
 
-        import copy
-        model2 = copy.deepcopy(model)
+        for k, v in loaded_dict.items():
+            row_sums = torch.sum(v, dim=0)
+            diagonal_matrix = torch.diag(row_sums)
+            loaded_dict[k] = diagonal_matrix
 
-        state_dict = model2.state_dict()
-
-        for key, _ in state_dict.items():
-            if len(loaded_dict[key].shape) == 2:
-                if state_dict[key].shape == torch.transpose(loaded_dict[key], 0, 1).shape:
-                    state_dict[key] = torch.transpose(loaded_dict[key], 0, 1)
-        model2.load_state_dict(state_dict)
+        for k, v in loaded_dict.items():
+            layer_num = k.split('.')[3]
+            weight_path = 'model.' + k.replace(f'.{layer_num}.', f'[{layer_num}].')
+            weight_tensor = eval(weight_path)
+            result_tensor = torch.nn.Parameter(torch.matmul(v, weight_tensor))
+            exec(f'{weight_path} = result_tensor')
+        
     elif args.decom_type == "qr":
         do_svd = False
         do_fwsvd = False
         do_qr = True
-        model2 = model
     else:
         do_svd = False
         do_fwsvd = False
         do_qr = False
-        model2 = model
     
     if args.apply_LoSparse:
-        utils.substitute_layer_weights(module=model, module2=model2,
+        utils.substitute_layer_weights(module=model,
                                    allow_name=allow_name,
                                    block_name=block_name,
                                    parameter_ratio=args.low_rank_parameter_ratio,
                                    do_svd=do_svd,
                                    do_fwsvd=do_fwsvd,
-                                   fwsvdfile=args.fwsvdfile,
-                                   do_qr=do_qr)
-    
+                                   loaded_dict=loaded_dict,
+                                   do_qr=do_qr,
+                                   apply_drone=args.apply_drone,
+                                   dict_track_queryU = dict_track_queryU,
+                                   dict_track_queryS = dict_track_queryS,
+                                   dict_track_queryV = dict_track_queryV,
+                                   dict_track_keyU = dict_track_keyU,
+                                   dict_track_keyS = dict_track_keyS,
+                                   dict_track_keyV = dict_track_keyV)
+
     # model = model.to(accelerator.device)
     model.resize_token_embeddings(len(tokenizer))
     if args.eval_checkpoint != "No checkpoint":
